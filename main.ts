@@ -958,6 +958,14 @@ class TemplateBuilderModal extends Modal {
 // PLUGIN
 // ═══════════════════════════════════════════════════════════════════════════════
 
+function isRedditUrl(url: string): boolean {
+	return /^https?:\/\/(www\.|old\.)?reddit\.com\/r\//.test(url);
+}
+
+function isSubstackUrl(url: string): boolean {
+	return /^https?:\/\/[^/]+\.substack\.com\/p\//.test(url);
+}
+
 const URL_PATTERN = /^https?:\/\/[^\s]+$/m;
 
 // A note is considered "unprocessed" if its content is still just a raw URL —
@@ -1064,9 +1072,181 @@ export default class ShareClipperPlugin extends Plugin {
 	// ── Page fetching & data extraction ─────────────────────────────────────
 
 	private async fetchPage(url: string): Promise<{ doc: Document; html: string }> {
-		const resp = await requestUrl({ url, headers: { "User-Agent": "Mozilla/5.0" } });
+		const resp = await requestUrl({
+			url,
+			headers: {
+				"User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+				"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+				"Accept-Language": "en-US,en;q=0.9",
+			},
+		});
 		const html = resp.text;
 		return { doc: new DOMParser().parseFromString(html, "text/html"), html };
+	}
+
+	private async fetchReddit(url: string): Promise<{ pageData: PageData; doc: Document } | null> {
+		try {
+			const apiUrl = url.replace(/\/?$/, ".json");
+			const resp = await requestUrl({
+				url: apiUrl,
+				headers: {
+					"User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+					"Accept": "application/json",
+				},
+			});
+			const json = resp.json;
+			const post = json?.[0]?.data?.children?.[0]?.data;
+			if (!post) return null;
+
+			const published = post.created_utc
+				? new Date(post.created_utc * 1000).toISOString()
+				: "";
+
+			const subreddit: string = post.subreddit ?? "";
+			const selftext: string = post.selftext ?? "";
+			const title: string = post.title ?? url;
+			const author: string = post.author ? `u/${post.author}` : "";
+
+			// Build content: post body, then top-level comments (max 10)
+			const lines: string[] = [];
+			if (selftext.trim()) {
+				lines.push(selftext.trim());
+				lines.push("");
+			}
+			const comments = json?.[1]?.data?.children ?? [];
+			const topComments = comments
+				.filter((c: Record<string, unknown>) => c.kind === "t1")
+				.slice(0, 10);
+			if (topComments.length > 0) {
+				lines.push("## Top Comments");
+				lines.push("");
+				for (const c of topComments) {
+					const d = (c as Record<string, Record<string, unknown>>).data;
+					const commentAuthor = d?.author ? `u/${d.author}` : "unknown";
+					const body = (d?.body as string ?? "").trim();
+					if (body && body !== "[deleted]" && body !== "[removed]") {
+						lines.push(`**${commentAuthor}:** ${body}`);
+						lines.push("");
+					}
+				}
+			}
+
+			const content = lines.join("\n");
+			const doc = new DOMParser().parseFromString("", "text/html");
+
+			return {
+				doc,
+				pageData: {
+					title,
+					url,
+					description: selftext.slice(0, 200).replace(/\n/g, " "),
+					author,
+					site: subreddit ? `r/${subreddit}` : "Reddit",
+					published,
+					image: "",
+					content,
+					contentHtml: "",
+					fullHtml: "",
+					reason: "",
+					category: "",
+				},
+			};
+		} catch {
+			return null;
+		}
+	}
+
+	private async fetchSubstack(url: string): Promise<{ pageData: PageData; doc: Document } | null> {
+		try {
+			const u = new URL(url);
+			const slug = u.pathname.replace(/^\/p\//, "").replace(/\/$/, "");
+			const apiUrl = `${u.protocol}//${u.hostname}/api/v1/posts/${slug}`;
+
+			const resp = await requestUrl({
+				url: apiUrl,
+				headers: {
+					"User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+					"Accept": "application/json",
+				},
+			});
+			const post = resp.json;
+			if (!post?.title) return null;
+
+			const bodyHtml: string = post.body_html ?? "";
+			const doc = new DOMParser().parseFromString(bodyHtml || "", "text/html");
+			const content = bodyHtml
+				? new WCEngine(doc, {
+					title: post.title ?? "",
+					url,
+					description: post.subtitle ?? "",
+					author: "",
+					site: "",
+					published: "",
+					image: "",
+					content: "",
+					contentHtml: bodyHtml,
+					fullHtml: "",
+					reason: "",
+					category: "",
+				}).toMarkdown(bodyHtml)
+				: "";
+
+			const authors: unknown[] = Array.isArray(post.authors) ? post.authors : [];
+			const author = (authors[0] as Record<string, unknown>)?.name as string ?? "";
+			const published: string = post.post_date ?? post.updated_at ?? "";
+			const image: string =
+				post.cover_image ??
+				post.thumbnail_image ??
+				(Array.isArray(post.publishedBylines) && (post.publishedBylines[0] as Record<string, unknown>)?.photo_url as string) ??
+				"";
+
+			return {
+				doc,
+				pageData: {
+					title: post.title ?? url,
+					url,
+					description: post.subtitle ?? "",
+					author,
+					site: u.hostname,
+					published,
+					image,
+					content,
+					contentHtml: bodyHtml,
+					fullHtml: "",
+					reason: "",
+					category: "",
+				},
+			};
+		} catch {
+			return null;
+		}
+	}
+
+	private async fetchSmart(url: string): Promise<{ pageData: PageData; doc: Document }> {
+		if (isRedditUrl(url)) {
+			const result = await this.fetchReddit(url);
+			if (result) return result;
+		}
+
+		if (isSubstackUrl(url)) {
+			const result = await this.fetchSubstack(url);
+			if (result) return result;
+		}
+
+		const fetched = await this.fetchPage(url);
+		const doc = fetched?.doc ?? new DOMParser().parseFromString("", "text/html");
+		const pageData = fetched
+			? this.extractPageData(doc, url, fetched.html)
+			: this.blockedPageData(url);
+		return { pageData, doc };
+	}
+
+	private blockedPageData(url: string): PageData {
+		return {
+			title: url, url, description: "", author: "",
+			site: new URL(url).hostname, published: "", image: "",
+			content: "", contentHtml: "", fullHtml: "", reason: "", category: "",
+		};
 	}
 
 	private extractPageData(doc: Document, url: string, html: string): PageData {
@@ -1119,8 +1299,7 @@ export default class ShareClipperPlugin extends Plugin {
 		new Notice("📎 Share Clipper: fetching…");
 
 		try {
-			const { doc, html }  = await this.fetchPage(urlMatch[0]);
-			const pageData       = this.extractPageData(doc, urlMatch[0], html);
+			const { pageData, doc } = await this.fetchSmart(urlMatch[0]);
 			const templates      = await this.loadTemplates();
 			if (!templates.length) { new Notice("No templates found — open the template builder first"); return; }
 
@@ -1154,8 +1333,7 @@ export default class ShareClipperPlugin extends Plugin {
 	private async clipUrl(url: string) {
 		new Notice("📎 Share Clipper: fetching…");
 		try {
-			const { doc, html }  = await this.fetchPage(url);
-			const pageData       = this.extractPageData(doc, url, html);
+			const { pageData, doc } = await this.fetchSmart(url);
 			const templates      = await this.loadTemplates();
 			if (!templates.length) { new Notice("No templates found"); return; }
 

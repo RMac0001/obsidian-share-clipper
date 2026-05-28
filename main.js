@@ -24,31 +24,34 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var DEFAULT_SETTINGS = {
-  templateFolder: "Templates/Web Clipper",
-  defaultTemplate: "Default",
+  templateFolder: "templates/web-clipper",
+  defaultTemplate: "default",
   watchDelay: 1500
 };
-var DEFAULT_TEMPLATE_JSON = `{
-  "schemaVersion": "0.1.0",
-  "name": "Default",
-  "behavior": "create",
-  "noteNameFormat": "{{title|safe_name}}",
-  "path": "Clippings",
-  "noteContentFormat": "{{content}}",
-  "properties": [
-    { "name": "title",       "value": "{{title}}",       "type": "text" },
-    { "name": "url",         "value": "{{url}}",         "type": "text" },
-    { "name": "author",      "value": "{{author}}",      "type": "text" },
-    { "name": "site",        "value": "{{site}}",        "type": "text" },
-    { "name": "published",   "value": "{{published}}",   "type": "date" },
-    { "name": "description", "value": "{{description}}", "type": "text" },
-    { "name": "clipped",     "value": "{{date}}",        "type": "date" },
-    { "name": "tags",        "value": "clipping",        "type": "multitext" },
-    { "name": "reason",      "value": "{{reason}}",      "type": "text" },
-    { "name": "category",    "value": "{{category}}",    "type": "text" }
+var FALLBACK_TEMPLATE = {
+  schemaVersion: "0.1.0",
+  name: "Default",
+  behavior: "create",
+  noteNameFormat: "{{title|safe_name}}",
+  path: "Clippings",
+  noteContentFormat: "{{content}}",
+  properties: [
+    { name: "title", value: "{{title}}", type: "text" },
+    { name: "source", value: "{{url}}", type: "text" },
+    {
+      name: "author",
+      value: '{{author|split:", "|wikilink|join}}',
+      type: "text"
+    },
+    { name: "published", value: "{{published}}", type: "date" },
+    { name: "created", value: "{{date}}", type: "date" },
+    { name: "description", value: "{{description}}", type: "text" },
+    { name: "tags", value: "clipping", type: "multitext" },
+    { name: "reason", value: "{{reason}}", type: "text" },
+    { name: "category", value: "{{category}}", type: "text" }
   ],
-  "triggers": []
-}`;
+  triggers: []
+};
 var WCEngine = class {
   constructor(doc, data) {
     this.doc = doc;
@@ -63,10 +66,8 @@ var WCEngine = class {
         const p = JSON.parse((_a = el.textContent) != null ? _a : "");
         if ((p == null ? void 0 : p["@graph"]) && Array.isArray(p["@graph"]))
           out.push(...p["@graph"]);
-        else if (Array.isArray(p))
-          out.push(...p);
-        else
-          out.push(p);
+        else if (Array.isArray(p)) out.push(...p);
+        else out.push(p);
       } catch (e) {
       }
     });
@@ -85,8 +86,7 @@ var WCEngine = class {
   resolveExpr(expr) {
     const parts = this.splitPipe(expr);
     let val = this.resolveVar(parts[0].trim());
-    for (const f of parts.slice(1))
-      val = this.applyFilter(val, f.trim());
+    for (const f of parts.slice(1)) val = this.applyFilter(val, f.trim());
     return val;
   }
   resolveVar(name) {
@@ -94,10 +94,8 @@ var WCEngine = class {
       return this.doSelector(name.slice(9), false);
     if (name.startsWith("selectorHtml:"))
       return this.doSelector(name.slice(13), true);
-    if (name.startsWith("schema:"))
-      return this.doSchema(name.slice(7));
-    if (name.startsWith("meta:"))
-      return this.doMeta(name.slice(5));
+    if (name.startsWith("schema:")) return this.doSchema(name.slice(7));
+    if (name.startsWith("meta:")) return this.doMeta(name.slice(5));
     switch (name) {
       case "title":
         return this.data.title;
@@ -121,9 +119,9 @@ var WCEngine = class {
       case "fullHtml":
         return this.data.fullHtml;
       case "date":
-        return new Date().toISOString().split("T")[0];
+        return (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
       case "time":
-        return new Date().toISOString();
+        return (/* @__PURE__ */ new Date()).toISOString();
       case "highlights":
       case "selection":
       case "selectionHtml":
@@ -146,10 +144,8 @@ var WCEngine = class {
     const els = Array.from(this.doc.querySelectorAll(css));
     return els.map((el) => {
       var _a, _b, _c;
-      if (attr)
-        return (_a = el.getAttribute(attr)) != null ? _a : "";
-      if (asHtml)
-        return el.innerHTML.trim();
+      if (attr) return (_a = el.getAttribute(attr)) != null ? _a : "";
+      if (asHtml) return el.innerHTML.trim();
       return (_c = (_b = el.textContent) == null ? void 0 : _b.trim()) != null ? _c : "";
     });
   }
@@ -171,39 +167,62 @@ var WCEngine = class {
     }) : this.jsonLd;
     for (const s of schemas) {
       const v = this.deepGet(s, keyPath);
-      if (v != null)
-        return Array.isArray(v) ? v.map((x) => this.schemaStr(x)) : this.schemaStr(v);
+      if (v != null) {
+        if (Array.isArray(v)) {
+          const domItems = keyPath ? this.domItemprop(keyPath.replace(/\[.*$/, "")) : [];
+          if (domItems.length > 0) return domItems;
+          return v.map((x) => this.schemaStr(x));
+        }
+        return this.schemaStr(v);
+      }
     }
     return "";
   }
+  domItemprop(name) {
+    var _a;
+    const els = Array.from(this.doc.querySelectorAll(`[itemprop="${name}"]`));
+    if (els.length === 0) return [];
+    const results = [];
+    for (const el of els) {
+      const html = el.innerHTML.replace(/<br\s*\/?>/gi, "\n");
+      const tmp = this.doc.createElement("div");
+      tmp.innerHTML = html;
+      const text = (_a = tmp.textContent) != null ? _a : "";
+      for (const part of text.split("\n")) {
+        const t = part.trim();
+        if (t) results.push(t);
+      }
+    }
+    return results;
+  }
   deepGet(obj, path) {
-    if (!path)
-      return obj;
+    if (!path) return obj;
     let cur = obj;
     for (const part of path.split(".")) {
       const m = part.match(/^(.+?)\[(\d+|\*)\]$/);
       if (m) {
         cur = cur == null ? void 0 : cur[m[1]];
-        if (!Array.isArray(cur))
-          return void 0;
+        if (!Array.isArray(cur)) return void 0;
         cur = m[2] === "*" ? cur : cur[parseInt(m[2])];
       } else {
-        cur = cur == null ? void 0 : cur[part];
+        if (Array.isArray(cur)) {
+          const mapped = cur.map((item) => item == null ? void 0 : item[part]).filter((v) => v != null);
+          cur = mapped.length > 0 ? mapped : void 0;
+        } else {
+          cur = cur == null ? void 0 : cur[part];
+        }
       }
-      if (cur == null)
-        return void 0;
+      if (cur == null) return void 0;
     }
     return cur;
   }
   schemaStr(v) {
-    if (typeof v === "string" || typeof v === "number")
-      return String(v);
+    if (typeof v === "string" || typeof v === "number") return String(v);
     if (typeof v === "object" && v !== null) {
       const o = v;
-      if (o.name)
-        return String(o.name);
-      if (o["@value"])
-        return String(o["@value"]);
+      if (o.text) return String(o.text);
+      if (o.name) return String(o.name);
+      if (o["@value"]) return String(o["@value"]);
     }
     return JSON.stringify(v);
   }
@@ -241,9 +260,11 @@ var WCEngine = class {
         case "link":
           return val.map((v) => `[${this.strArg(arg) || v}](${v})`);
         case "blockquote":
-          return val.map((v) => v.split("\n").map((l) => "> " + l).join("\n"));
+          return val.map(
+            (v) => v.split("\n").map((l) => "> " + l).join("\n")
+          );
         case "list":
-          return val.map((v) => `- ${v}`).join("\n");
+          return val.map((v) => arg === "task" ? `- [ ] ${v}` : `- ${v}`).join("\n");
         case "strip_tags":
           return val.map((v) => v.replace(/<[^>]+>/g, ""));
         default: {
@@ -296,7 +317,7 @@ var WCEngine = class {
       case "link":
         return `[${this.strArg(arg) || val}](${val})`;
       case "list":
-        return `- ${val}`;
+        return arg === "task" ? `- [ ] ${val}` : `- ${val}`;
       default:
         return val;
     }
@@ -307,9 +328,8 @@ var WCEngine = class {
   }
   formatDate(val, arg) {
     const fmt = this.strArg(arg) || "YYYY-MM-DD";
-    const d = val ? new Date(val) : new Date();
-    if (isNaN(d.getTime()))
-      return val;
+    const d = val ? new Date(val) : /* @__PURE__ */ new Date();
+    if (isNaN(d.getTime())) return val;
     return fmt.replace("YYYY", String(d.getFullYear())).replace("MM", String(d.getMonth() + 1).padStart(2, "0")).replace("DD", String(d.getDate()).padStart(2, "0")).replace("HH", String(d.getHours()).padStart(2, "0")).replace("mm", String(d.getMinutes()).padStart(2, "0")).replace("ss", String(d.getSeconds()).padStart(2, "0"));
   }
   sliceStr(val, arg) {
@@ -363,8 +383,7 @@ var WCEngine = class {
         }
         i++;
         result.push(s);
-        while (i < arg.length && (arg[i] === ":" || arg[i] === " "))
-          i++;
+        while (i < arg.length && (arg[i] === ":" || arg[i] === " ")) i++;
       } else {
         i++;
       }
@@ -382,7 +401,9 @@ var WCEngine = class {
   }
   mkCallout(val, arg) {
     var _a, _b;
-    const m = arg.match(/\(\s*"([^"]*)"\s*(?:,\s*"([^"]*)"\s*)?(?:,\s*(true|false|null)\s*)?\)/);
+    const m = arg.match(
+      /\(\s*"([^"]*)"\s*(?:,\s*"([^"]*)"\s*)?(?:,\s*(true|false|null)\s*)?\)/
+    );
     const type = (_a = m == null ? void 0 : m[1]) != null ? _a : "info";
     const title = (_b = m == null ? void 0 : m[2]) != null ? _b : "";
     const fold = (m == null ? void 0 : m[3]) === "true" ? "+" : (m == null ? void 0 : m[3]) === "false" ? "-" : "";
@@ -391,19 +412,19 @@ ${val.split("\n").map((l) => "> " + l).join("\n")}`;
   }
   toMarkdown(html) {
     const d = new DOMParser().parseFromString(html, "text/html");
-    ["script", "style", "svg", "noscript"].forEach((t) => d.querySelectorAll(t).forEach((e) => e.remove()));
+    ["script", "style", "svg", "noscript"].forEach(
+      (t) => d.querySelectorAll(t).forEach((e) => e.remove())
+    );
     return this.walkNode(d.body).replace(/\n{3,}/g, "\n\n").trim();
   }
   walkNode(node) {
     var _a, _b;
     if (node.nodeType === Node.TEXT_NODE)
       return ((_a = node.textContent) == null ? void 0 : _a.replace(/\s+/g, " ")) || "";
-    if (node.nodeType !== Node.ELEMENT_NODE)
-      return "";
+    if (node.nodeType !== Node.ELEMENT_NODE) return "";
     const el = node;
     const tag = el.tagName.toLowerCase();
-    if (["script", "style", "svg", "noscript"].includes(tag))
-      return "";
+    if (["script", "style", "svg", "noscript"].includes(tag)) return "";
     const kids = Array.from(node.childNodes).map((c) => this.walkNode(c)).join("");
     switch (tag) {
       case "h1":
@@ -499,8 +520,7 @@ ${kids}
       const ch = expr[i];
       if (inStr) {
         cur += ch;
-        if (ch === sc && expr[i - 1] !== "\\")
-          inStr = false;
+        if (ch === sc && expr[i - 1] !== "\\") inStr = false;
       } else if (ch === '"' || ch === "'") {
         inStr = true;
         sc = ch;
@@ -518,35 +538,29 @@ ${kids}
         cur += ch;
       }
     }
-    if (cur)
-      parts.push(cur);
+    if (cur) parts.push(cur);
     return parts;
   }
 };
 function buildFrontmatter(properties, engine) {
   const lines = ["---"];
-  for (const prop of properties) {
-    const raw = engine.resolve(prop.value);
-    lines.push(yamlLine(prop.name, raw, prop.type));
-  }
+  for (const prop of properties)
+    lines.push(yamlLine(prop.name, engine.resolve(prop.value), prop.type));
   lines.push("---");
   return lines.join("\n");
 }
 function yamlLine(name, value, type) {
   if (type === "multitext" || type === "tags") {
     const arr = (Array.isArray(value) ? value : [value]).filter(Boolean);
-    if (arr.length === 0)
-      return `${name}:`;
+    if (arr.length === 0) return `${name}:`;
     return `${name}:
 ` + arr.map((v) => `  - ${yamlScalar(v)}`).join("\n");
   }
   if (type === "checkbox")
     return `${name}: ${value === "true" || value === "1"}`;
-  if (type === "number")
-    return `${name}: ${parseFloat(String(value)) || 0}`;
+  if (type === "number") return `${name}: ${parseFloat(String(value)) || 0}`;
   const str = Array.isArray(value) ? value.join(", ") : String(value);
-  if (!str)
-    return `${name}:`;
+  if (!str) return `${name}:`;
   return `${name}: ${yamlScalar(str)}`;
 }
 function yamlScalar(v) {
@@ -557,8 +571,7 @@ function yamlScalar(v) {
 function parseTemplateNote(content) {
   let json = content.trim();
   const fence = json.match(/^```(?:json)?\s*\n([\s\S]+?)\n```\s*$/);
-  if (fence)
-    json = fence[1].trim();
+  if (fence) json = fence[1].trim();
   try {
     return JSON.parse(json);
   } catch (e) {
@@ -568,8 +581,7 @@ function parseTemplateNote(content) {
 function templateMatchesUrl(tpl, url) {
   var _a;
   for (const trigger of (_a = tpl.triggers) != null ? _a : []) {
-    if (!trigger || trigger.startsWith("schema:"))
-      continue;
+    if (!trigger || trigger.startsWith("schema:")) continue;
     if (trigger.startsWith("/") && trigger.lastIndexOf("/") > 0) {
       const last = trigger.lastIndexOf("/");
       try {
@@ -578,8 +590,7 @@ function templateMatchesUrl(tpl, url) {
       } catch (e) {
       }
     } else {
-      if (url.startsWith(trigger) || url.includes(trigger))
-        return true;
+      if (url.startsWith(trigger) || url.includes(trigger)) return true;
     }
   }
   return false;
@@ -588,123 +599,72 @@ function buildNote(tpl, engine) {
   var _a, _b;
   const fm = buildFrontmatter((_a = tpl.properties) != null ? _a : [], engine);
   let body = (_b = tpl.noteContentFormat) != null ? _b : "{{content}}";
-  if (tpl.context) {
-    const ctx = engine.resolve(tpl.context);
-    body = body.replace(/\{\{context\}\}/g, ctx);
-  }
-  const bodyResolved = engine.resolve(body).replace(/\\n/g, "\n");
+  if (tpl.context)
+    body = body.replace(/\{\{context\}\}/g, engine.resolve(tpl.context));
   return `${fm}
 
-${bodyResolved}`;
+${engine.resolve(body).replace(/\\n/g, "\n")}`;
 }
 function injectStyles() {
-  if (document.getElementById("share-clipper-styles"))
-    return;
+  if (document.getElementById("share-clipper-styles")) return;
   const s = document.createElement("style");
   s.id = "share-clipper-styles";
   s.textContent = `
-		.sc-modal { padding: 8px; }
-		.sc-modal h2 { margin-bottom: 14px; }
-		.sc-two-col { display:flex; gap:16px; min-height:440px; }
-		.sc-sidebar { width:190px; flex-shrink:0; display:flex; flex-direction:column; gap:5px; overflow-y:auto; }
-		.sc-main { flex:1; display:flex; flex-direction:column; gap:8px; }
-		.sc-label {
-			display:block; font-size:.82em; font-weight:600;
-			text-transform:uppercase; letter-spacing:.05em;
-			color:var(--text-muted); margin:14px 0 4px;
-		}
-		.sc-label:first-child { margin-top:0; }
-		.sc-input {
-			width:100%; padding:6px 10px; border-radius:6px;
-			border:1px solid var(--background-modifier-border);
-			background:var(--background-primary); color:var(--text-normal);
-			font-size:1em; box-sizing:border-box;
-		}
-		.sc-select {
-			width:100%; padding:6px 10px; border-radius:6px;
-			border:1px solid var(--background-modifier-border);
-			background:var(--background-primary); color:var(--text-normal);
-			font-size:1em; box-sizing:border-box; cursor:pointer;
-		}
-		.sc-textarea {
-			width:100%; padding:8px 10px; border-radius:6px;
-			border:1px solid var(--background-modifier-border);
-			background:var(--background-primary); color:var(--text-normal);
-			font-size:.88em; resize:vertical; box-sizing:border-box;
-			font-family:var(--font-monospace); line-height:1.55; flex:1;
-		}
-		.sc-chips-label { font-size:.8em; color:var(--text-muted); margin:6px 0 4px; }
-		.sc-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
-		.sc-chip {
-			padding:4px 12px; border-radius:999px;
-			border:1px solid var(--background-modifier-border);
-			background:var(--background-secondary); color:var(--text-normal);
-			cursor:pointer; font-size:.88em; transition:all .12s;
-		}
-		.sc-chip:hover { background:var(--background-modifier-hover); }
-		.sc-chip-selected {
-			background:var(--interactive-accent) !important;
-			color:var(--text-on-accent) !important;
-			border-color:var(--interactive-accent) !important;
-		}
-		.sc-tpl-item {
-			padding:7px 10px; border-radius:6px; cursor:pointer;
-			border:1px solid transparent; font-size:.9em;
-			background:var(--background-secondary);
-			display:flex; justify-content:space-between; align-items:center;
-		}
-		.sc-tpl-item:hover  { background:var(--background-modifier-hover); }
-		.sc-tpl-item.active { background:var(--interactive-accent); color:var(--text-on-accent); }
-		.sc-tpl-del {
-			background:none; border:none; cursor:pointer;
-			color:var(--text-muted); font-size:1em; padding:0 2px; opacity:.6;
-		}
-		.sc-tpl-del:hover { opacity:1; color:var(--text-error); }
-		.sc-tpl-item.active .sc-tpl-del { color:var(--text-on-accent); }
-		.sc-var-row { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px; }
-		.sc-var-pill {
-			padding:2px 7px; border-radius:4px; font-size:.75em;
-			background:var(--background-secondary);
-			border:1px solid var(--background-modifier-border);
-			cursor:pointer; font-family:var(--font-monospace); color:var(--text-accent);
-		}
-		.sc-var-pill:hover { background:var(--background-modifier-hover); }
-		.sc-btn-row { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
-		.sc-btn-spread { display:flex; justify-content:space-between; gap:8px; margin-top:16px; }
-		.sc-btn {
-			padding:7px 16px; border-radius:6px; cursor:pointer;
-			border:1px solid var(--background-modifier-border);
-			background:var(--background-secondary); color:var(--text-normal); font-size:.9em;
-		}
-		.sc-btn:hover { background:var(--background-modifier-hover); }
-		.sc-btn-accent {
-			padding:7px 18px; border-radius:6px; border:none; cursor:pointer;
-			background:var(--interactive-accent); color:var(--text-on-accent);
-			font-weight:600; font-size:.9em;
-		}
-		.sc-btn-accent:hover { filter:brightness(1.1); }
-		.sc-btn-danger {
-			padding:7px 14px; border-radius:6px; border:none; cursor:pointer;
-			background:var(--background-modifier-error); color:var(--text-error); font-size:.9em;
-		}
-		.sc-divider { border:none; border-top:1px solid var(--background-modifier-border); margin:10px 0; }
-		.sc-hint { font-size:.8em; color:var(--text-muted); margin:4px 0 0; }
-		.sc-status { font-size:.8em; color:var(--color-green); }
-	`;
+    .sc-modal { padding: 8px; }
+    .sc-modal h2 { margin-bottom: 14px; }
+    .sc-two-col { display:flex; gap:16px; min-height:440px; }
+    .sc-sidebar { width:190px; flex-shrink:0; display:flex; flex-direction:column; gap:5px; overflow-y:auto; }
+    .sc-main { flex:1; display:flex; flex-direction:column; gap:8px; }
+    .sc-label { display:block; font-size:.82em; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--text-muted); margin:14px 0 4px; }
+    .sc-label:first-child { margin-top:0; }
+    .sc-input { width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--background-modifier-border); background:var(--background-primary); color:var(--text-normal); font-size:1em; box-sizing:border-box; }
+    .sc-select { width:100%; padding:6px 10px; border-radius:6px; border:1px solid var(--background-modifier-border); background:var(--background-primary); color:var(--text-normal); font-size:1em; box-sizing:border-box; cursor:pointer; }
+    .sc-textarea { width:100%; padding:8px 10px; border-radius:6px; border:1px solid var(--background-modifier-border); background:var(--background-primary); color:var(--text-normal); font-size:.88em; resize:vertical; box-sizing:border-box; font-family:var(--font-monospace); line-height:1.55; flex:1; }
+    .sc-chips-label { font-size:.8em; color:var(--text-muted); margin:6px 0 4px; }
+    .sc-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+    .sc-chip { padding:4px 12px; border-radius:999px; border:1px solid var(--background-modifier-border); background:var(--background-secondary); color:var(--text-normal); cursor:pointer; font-size:.88em; transition:all .12s; }
+    .sc-chip:hover { background:var(--background-modifier-hover); }
+    .sc-chip-selected { background:var(--interactive-accent) !important; color:var(--text-on-accent) !important; border-color:var(--interactive-accent) !important; }
+    .sc-tpl-item { padding:7px 10px; border-radius:6px; cursor:pointer; border:1px solid transparent; font-size:.9em; background:var(--background-secondary); display:flex; justify-content:space-between; align-items:center; }
+    .sc-tpl-item:hover { background:var(--background-modifier-hover); }
+    .sc-tpl-item.active { background:var(--interactive-accent); color:var(--text-on-accent); }
+    .sc-tpl-del { background:none; border:none; cursor:pointer; color:var(--text-muted); font-size:1em; padding:0 2px; opacity:.6; }
+    .sc-tpl-del:hover { opacity:1; color:var(--text-error); }
+    .sc-tpl-item.active .sc-tpl-del { color:var(--text-on-accent); }
+    .sc-var-row { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:6px; }
+    .sc-var-pill { padding:2px 7px; border-radius:4px; font-size:.75em; background:var(--background-secondary); border:1px solid var(--background-modifier-border); cursor:pointer; font-family:var(--font-monospace); color:var(--text-accent); }
+    .sc-var-pill:hover { background:var(--background-modifier-hover); }
+    .sc-btn-row { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+    .sc-btn-spread { display:flex; justify-content:space-between; gap:8px; margin-top:16px; }
+    .sc-btn { padding:7px 16px; border-radius:6px; cursor:pointer; border:1px solid var(--background-modifier-border); background:var(--background-secondary); color:var(--text-normal); font-size:.9em; }
+    .sc-btn:hover { background:var(--background-modifier-hover); }
+    .sc-btn-accent { padding:7px 18px; border-radius:6px; border:none; cursor:pointer; background:var(--interactive-accent); color:var(--text-on-accent); font-weight:600; font-size:.9em; }
+    .sc-btn-accent:hover { filter:brightness(1.1); }
+    .sc-btn-danger { padding:7px 14px; border-radius:6px; border:none; cursor:pointer; background:var(--background-modifier-error); color:var(--text-error); font-size:.9em; }
+    .sc-divider { border:none; border-top:1px solid var(--background-modifier-border); margin:10px 0; }
+    .sc-hint { font-size:.8em; color:var(--text-muted); margin:4px 0 0; }
+    .sc-status { font-size:.8em; color:var(--color-green); }
+  `;
   document.head.appendChild(s);
 }
 var SaveDialog = class extends import_obsidian.Modal {
-  constructor(app, templates, autoSelect, categories, resolve) {
-    var _a;
+  constructor(app, templates, autoSelect, categories, resolvedNames, resolve) {
+    var _a, _b, _c;
     super(app);
     this.selName = "";
     this.reasonVal = "";
     this.catVal = "";
+    this.noteNameVal = "";
+    this.pathVal = "";
     this.templates = templates;
     this.autoSelect = autoSelect;
     this.categories = categories;
+    this.resolvedNames = resolvedNames;
     this.resolve = resolve;
     this.selName = autoSelect || ((_a = templates[0]) == null ? void 0 : _a.name) || "";
+    const initial = resolvedNames.get(this.selName);
+    this.pathVal = (_b = initial == null ? void 0 : initial.path) != null ? _b : "";
+    this.noteNameVal = (_c = initial == null ? void 0 : initial.noteName) != null ? _c : "";
   }
   onOpen() {
     injectStyles();
@@ -714,24 +674,54 @@ var SaveDialog = class extends import_obsidian.Modal {
     contentEl.createEl("h2", { text: "Save Clipping" });
     if (this.templates.length > 1) {
       contentEl.createEl("label", { text: "Template", cls: "sc-label" });
-      const sel = contentEl.createEl("select", { cls: "sc-select" });
+      const sel = contentEl.createEl("select", {
+        cls: "sc-select"
+      });
       for (const t of this.templates) {
         const opt = sel.createEl("option", { text: t.name });
         opt.value = t.name;
-        if (t.name === this.selName)
-          opt.selected = true;
+        if (t.name === this.selName) opt.selected = true;
       }
       sel.addEventListener("change", () => {
         this.selName = sel.value;
+        const r = this.resolvedNames.get(sel.value);
+        if (r) {
+          pathInput.value = r.path;
+          this.pathVal = r.path;
+          nameInput.value = r.noteName;
+          this.noteNameVal = r.noteName;
+        }
       });
-      if (this.autoSelect) {
+      if (this.autoSelect)
         contentEl.createEl("p", {
           text: `\u2191 Auto-selected by URL trigger`,
           cls: "sc-hint"
         });
-      }
     }
-    contentEl.createEl("label", { text: "Why are you saving this?", cls: "sc-label" });
+    contentEl.createEl("label", { text: "Folder", cls: "sc-label" });
+    const pathInput = contentEl.createEl("input", {
+      type: "text",
+      cls: "sc-input"
+    });
+    pathInput.value = this.pathVal;
+    pathInput.placeholder = "e.g. Clippings";
+    pathInput.addEventListener("input", () => {
+      this.pathVal = pathInput.value;
+    });
+    contentEl.createEl("label", { text: "File name", cls: "sc-label" });
+    const nameInput = contentEl.createEl("input", {
+      type: "text",
+      cls: "sc-input"
+    });
+    nameInput.value = this.noteNameVal;
+    nameInput.placeholder = "Note name (without .md)";
+    nameInput.addEventListener("input", () => {
+      this.noteNameVal = nameInput.value;
+    });
+    contentEl.createEl("label", {
+      text: "Why are you saving this?",
+      cls: "sc-label"
+    });
     const reasonInput = contentEl.createEl("textarea", { cls: "sc-textarea" });
     reasonInput.placeholder = "Research, writing reference, thriller craft\u2026";
     reasonInput.rows = 3;
@@ -773,8 +763,7 @@ var SaveDialog = class extends import_obsidian.Modal {
     });
     btnRow.createEl("button", { text: "Save", cls: "sc-btn-accent" }).addEventListener("click", () => this.submit());
     newCat.addEventListener("keydown", (e) => {
-      if (e.key === "Enter")
-        this.submit();
+      if (e.key === "Enter") this.submit();
     });
     setTimeout(() => reasonInput.focus(), 50);
   }
@@ -782,7 +771,9 @@ var SaveDialog = class extends import_obsidian.Modal {
     this.resolve({
       templateName: this.selName,
       reason: this.reasonVal.trim(),
-      category: this.catVal.trim()
+      category: this.catVal.trim(),
+      noteName: this.noteNameVal.trim(),
+      path: this.pathVal.trim()
     });
     this.close();
   }
@@ -790,6 +781,17 @@ var SaveDialog = class extends import_obsidian.Modal {
     this.contentEl.empty();
   }
 };
+function resolveTemplateNames(templates, doc, pageData) {
+  var _a;
+  const map = /* @__PURE__ */ new Map();
+  for (const t of templates) {
+    const eng = new WCEngine(doc, { ...pageData, reason: "", category: "" });
+    const raw = t.tpl.noteNameFormat ? eng.resolve(t.tpl.noteNameFormat) : pageData.title;
+    const noteName = raw.replace(/[\\/:*?"<>|]/g, "").substring(0, 80).trim() || "Clipping";
+    map.set(t.name, { path: (_a = t.tpl.path) != null ? _a : "", noteName });
+  }
+  return map;
+}
 var VARIABLE_REFERENCE = [
   { token: "{{title}}", desc: "Page title" },
   { token: "{{url}}", desc: "Page URL" },
@@ -859,20 +861,32 @@ var TemplateBuilderModal = class extends import_obsidian.Modal {
     this.sidebarEl = cols.createDiv({ cls: "sc-sidebar" });
     this.editorEl = cols.createDiv({ cls: "sc-main" });
     this.editorEl.style.overflow = "hidden";
-    this.editorEl.createEl("label", { text: "Variables \u2014 click to copy", cls: "sc-label" }).style.marginTop = "0";
+    this.editorEl.createEl("label", {
+      text: "Variables \u2014 click to copy",
+      cls: "sc-label"
+    }).style.marginTop = "0";
     const varRow = this.editorEl.createDiv({ cls: "sc-var-row" });
     for (const v of VARIABLE_REFERENCE) {
-      const pill = varRow.createEl("button", { text: v.token, cls: "sc-var-pill" });
+      const pill = varRow.createEl("button", {
+        text: v.token,
+        cls: "sc-var-pill"
+      });
       pill.title = v.desc;
       pill.addEventListener("click", () => {
         navigator.clipboard.writeText(v.token);
         new import_obsidian.Notice(`Copied ${v.token}`);
       });
     }
-    this.editorEl.createEl("label", { text: "Common filters", cls: "sc-label" });
+    this.editorEl.createEl("label", {
+      text: "Common filters",
+      cls: "sc-label"
+    });
     const filterRow = this.editorEl.createDiv({ cls: "sc-var-row" });
     for (const f of FILTER_REFERENCE) {
-      const pill = filterRow.createEl("button", { text: f, cls: "sc-var-pill" });
+      const pill = filterRow.createEl("button", {
+        text: f,
+        cls: "sc-var-pill"
+      });
       pill.style.color = "var(--text-muted)";
       pill.addEventListener("click", () => {
         navigator.clipboard.writeText(f);
@@ -895,26 +909,27 @@ var TemplateBuilderModal = class extends import_obsidian.Modal {
     await this.loadNotes();
     this.renderSidebar();
     const first = Array.from(this.notes.keys())[0];
-    if (first)
-      this.selectNote(first);
-    else
-      this.editorEl.style.opacity = "0.5";
+    if (first) this.selectNote(first);
+    else this.editorEl.style.opacity = "0.5";
   }
   async loadNotes() {
     this.notes.clear();
     await this.plugin.ensureFolder(this.plugin.settings.templateFolder);
-    const folder = this.app.vault.getAbstractFileByPath(this.plugin.settings.templateFolder);
-    if (!(folder instanceof import_obsidian.TFolder))
-      return;
-    for (const child of folder.children) {
+    const folder = this.app.vault.getAbstractFileByPath(
+      this.plugin.settings.templateFolder
+    );
+    if (!(folder instanceof import_obsidian.TFolder)) return;
+    for (const child of folder.children)
       if (child instanceof import_obsidian.TFile && child.extension === "md")
         this.notes.set(child.basename, await this.app.vault.read(child));
-    }
   }
   renderSidebar() {
     this.sidebarEl.empty();
     if (this.notes.size === 0) {
-      this.sidebarEl.createEl("p", { text: "No templates yet.", cls: "sc-hint" });
+      this.sidebarEl.createEl("p", {
+        text: "No templates yet.",
+        cls: "sc-hint"
+      });
       return;
     }
     for (const name of this.notes.keys()) {
@@ -947,7 +962,10 @@ var TemplateBuilderModal = class extends import_obsidian.Modal {
   }
   newTemplate() {
     const name = `New Template ${this.notes.size + 1}`;
-    this.notes.set(name, DEFAULT_TEMPLATE_JSON.replace('"Default"', `"${name}"`));
+    this.notes.set(
+      name,
+      JSON.stringify({ ...FALLBACK_TEMPLATE, name }, null, 2)
+    );
     this.renderSidebar();
     this.selectNote(name);
     this.isDirty = true;
@@ -967,24 +985,21 @@ var TemplateBuilderModal = class extends import_obsidian.Modal {
     let saveName = this.selected;
     try {
       const p = JSON.parse(json);
-      if (p.name)
-        saveName = p.name;
+      if (p.name) saveName = p.name;
     } catch (e) {
     }
     const folder = this.plugin.settings.templateFolder;
-    const oldPath = `${folder}/${this.selected}.md`;
-    const newPath = `${folder}/${saveName}.md`;
     if (this.selected !== saveName) {
-      const old = this.app.vault.getAbstractFileByPath(oldPath);
-      if (old instanceof import_obsidian.TFile)
-        await this.app.vault.delete(old);
+      const old = this.app.vault.getAbstractFileByPath(
+        `${folder}/${this.selected}.md`
+      );
+      if (old instanceof import_obsidian.TFile) await this.app.vault.delete(old);
       this.notes.delete(this.selected);
     }
+    const newPath = `${folder}/${saveName}.md`;
     const existing = this.app.vault.getAbstractFileByPath(newPath);
-    if (existing instanceof import_obsidian.TFile)
-      await this.app.vault.modify(existing, json);
-    else
-      await this.app.vault.create(newPath, json);
+    if (existing instanceof import_obsidian.TFile) await this.app.vault.modify(existing, json);
+    else await this.app.vault.create(newPath, json);
     this.notes.set(saveName, json);
     this.selected = saveName;
     this.isDirty = false;
@@ -997,15 +1012,14 @@ var TemplateBuilderModal = class extends import_obsidian.Modal {
   async deleteTemplate() {
     if (!this.selected || !confirm(`Delete template "${this.selected}"?`))
       return;
-    const path = `${this.plugin.settings.templateFolder}/${this.selected}.md`;
-    const file = this.app.vault.getAbstractFileByPath(path);
-    if (file instanceof import_obsidian.TFile)
-      await this.app.vault.delete(file);
+    const file = this.app.vault.getAbstractFileByPath(
+      `${this.plugin.settings.templateFolder}/${this.selected}.md`
+    );
+    if (file instanceof import_obsidian.TFile) await this.app.vault.delete(file);
     this.notes.delete(this.selected);
     this.selected = "";
     const remaining = Array.from(this.notes.keys());
-    if (remaining.length)
-      this.selectNote(remaining[0]);
+    if (remaining.length) this.selectNote(remaining[0]);
     else {
       this.jsonEl.value = "";
       this.editorEl.style.opacity = "0.5";
@@ -1017,12 +1031,6 @@ var TemplateBuilderModal = class extends import_obsidian.Modal {
     this.contentEl.empty();
   }
 };
-function isRedditUrl(url) {
-  return /^https?:\/\/(www\.|old\.)?reddit\.com\/r\//.test(url);
-}
-function isSubstackUrl(url) {
-  return /^https?:\/\/[^/]+\.substack\.com\/p\//.test(url);
-}
 var URL_PATTERN = /^https?:\/\/[^\s]+$/m;
 function isRawUrlNote(content) {
   const t = content.trim();
@@ -1035,20 +1043,9 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
   }
   async onload() {
     await this.loadSettings();
-    await this.ensureDefaultTemplate();
-    this.app.workspace.onLayoutReady(async () => {
-      const fiveMinAgo = Date.now() - 5 * 60 * 1e3;
-      const candidates = this.app.vault.getMarkdownFiles().filter(
-        (f) => f.stat.ctime > fiveMinAgo
-      );
-      for (const file of candidates) {
-        await this.checkAndClip(file);
-      }
-    });
     this.registerEvent(
       this.app.vault.on("create", async (file) => {
-        if (!(file instanceof import_obsidian.TFile) || file.extension !== "md")
-          return;
+        if (!(file instanceof import_obsidian.TFile) || file.extension !== "md") return;
         setTimeout(() => this.checkAndClip(file), this.settings.watchDelay);
       })
     );
@@ -1073,15 +1070,6 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
       }
     });
     this.addCommand({
-      id: "clip-active",
-      name: "Clip URL from active note",
-      callback: async () => {
-        const f = this.app.workspace.getActiveFile();
-        if (f)
-          await this.checkAndClip(f, true);
-      }
-    });
-    this.addCommand({
       id: "template-builder",
       name: "Open template builder",
       callback: () => new TemplateBuilderModal(this.app, this).open()
@@ -1089,15 +1077,8 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
     this.addSettingTab(new ShareClipperSettingTab(this.app, this));
   }
   // ── Template management ──────────────────────────────────────────────────
-  async ensureDefaultTemplate() {
-    await this.ensureFolder(this.settings.templateFolder);
-    const path = `${this.settings.templateFolder}/Default.md`;
-    if (!this.app.vault.getAbstractFileByPath(path))
-      await this.app.vault.create(path, DEFAULT_TEMPLATE_JSON);
-  }
   async ensureFolder(path) {
-    if (!path)
-      return;
+    if (!path) return;
     let cur = "";
     for (const part of path.split("/")) {
       cur = cur ? `${cur}/${part}` : part;
@@ -1106,186 +1087,96 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
     }
   }
   async loadTemplates() {
-    const folder = this.app.vault.getAbstractFileByPath(this.settings.templateFolder);
-    if (!(folder instanceof import_obsidian.TFolder))
-      return [];
+    const folder = this.app.vault.getAbstractFileByPath(
+      this.settings.templateFolder
+    );
     const result = [];
-    for (const child of folder.children) {
-      if (!(child instanceof import_obsidian.TFile) || child.extension !== "md")
-        continue;
-      const content = await this.app.vault.read(child);
-      const tpl = parseTemplateNote(content);
-      if (tpl)
-        result.push({ name: tpl.name || child.basename, tpl });
+    if (folder instanceof import_obsidian.TFolder) {
+      for (const child of folder.children) {
+        if (!(child instanceof import_obsidian.TFile) || child.extension !== "md") continue;
+        const tpl = parseTemplateNote(await this.app.vault.read(child));
+        if (tpl) result.push({ name: tpl.name || child.basename, tpl });
+      }
     }
+    if (result.length === 0)
+      result.push({ name: FALLBACK_TEMPLATE.name, tpl: FALLBACK_TEMPLATE });
     return result.sort((a, b) => a.name.localeCompare(b.name));
   }
-  // ── Page fetching & data extraction ─────────────────────────────────────
+  // ── Page fetching — returns null on any failure, never throws ────────────
   async fetchPage(url) {
-    const resp = await (0, import_obsidian.requestUrl)({
-      url,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9"
-      }
-    });
-    const html = resp.text;
-    return { doc: new DOMParser().parseFromString(html, "text/html"), html };
-  }
-  async fetchReddit(url) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
     try {
-      const apiUrl = url.replace(/\/?$/, ".json");
       const resp = await (0, import_obsidian.requestUrl)({
-        url: apiUrl,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
-          "Accept": "application/json"
-        }
-      });
-      const json = resp.json;
-      const post = (_d = (_c = (_b = (_a = json == null ? void 0 : json[0]) == null ? void 0 : _a.data) == null ? void 0 : _b.children) == null ? void 0 : _c[0]) == null ? void 0 : _d.data;
-      if (!post)
-        return null;
-      const published = post.created_utc ? new Date(post.created_utc * 1e3).toISOString() : "";
-      const subreddit = (_e = post.subreddit) != null ? _e : "";
-      const selftext = (_f = post.selftext) != null ? _f : "";
-      const title = (_g = post.title) != null ? _g : url;
-      const author = post.author ? `u/${post.author}` : "";
-      const lines = [];
-      if (selftext.trim()) {
-        lines.push(selftext.trim());
-        lines.push("");
-      }
-      const comments = (_j = (_i = (_h = json == null ? void 0 : json[1]) == null ? void 0 : _h.data) == null ? void 0 : _i.children) != null ? _j : [];
-      const topComments = comments.filter((c) => c.kind === "t1").slice(0, 10);
-      if (topComments.length > 0) {
-        lines.push("## Top Comments");
-        lines.push("");
-        for (const c of topComments) {
-          const d = c.data;
-          const commentAuthor = (d == null ? void 0 : d.author) ? `u/${d.author}` : "unknown";
-          const body = ((_k = d == null ? void 0 : d.body) != null ? _k : "").trim();
-          if (body && body !== "[deleted]" && body !== "[removed]") {
-            lines.push(`**${commentAuthor}:** ${body}`);
-            lines.push("");
-          }
-        }
-      }
-      const content = lines.join("\n");
-      const doc = new DOMParser().parseFromString("", "text/html");
-      return {
-        doc,
-        pageData: {
-          title,
-          url,
-          description: selftext.slice(0, 200).replace(/\n/g, " "),
-          author,
-          site: subreddit ? `r/${subreddit}` : "Reddit",
-          published,
-          image: "",
-          content,
-          contentHtml: "",
-          fullHtml: "",
-          reason: "",
-          category: ""
-        }
-      };
-    } catch (e) {
-      return null;
-    }
-  }
-  async fetchSubstack(url) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
-    try {
-      const u = new URL(url);
-      const slug = u.pathname.replace(/^\/p\//, "").replace(/\/$/, "");
-      const apiUrl = `${u.protocol}//${u.hostname}/api/v1/posts/${slug}`;
-      const resp = await (0, import_obsidian.requestUrl)({
-        url: apiUrl,
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
-          "Accept": "application/json"
-        }
-      });
-      const post = resp.json;
-      if (!(post == null ? void 0 : post.title))
-        return null;
-      const bodyHtml = (_a = post.body_html) != null ? _a : "";
-      const doc = new DOMParser().parseFromString(bodyHtml || "", "text/html");
-      const content = bodyHtml ? new WCEngine(doc, {
-        title: (_b = post.title) != null ? _b : "",
         url,
-        description: (_c = post.subtitle) != null ? _c : "",
-        author: "",
-        site: "",
-        published: "",
-        image: "",
-        content: "",
-        contentHtml: bodyHtml,
-        fullHtml: "",
-        reason: "",
-        category: ""
-      }).toMarkdown(bodyHtml) : "";
-      const authors = Array.isArray(post.authors) ? post.authors : [];
-      const author = (_e = (_d = authors[0]) == null ? void 0 : _d.name) != null ? _e : "";
-      const published = (_g = (_f = post.post_date) != null ? _f : post.updated_at) != null ? _g : "";
-      const image = (_k = (_j = (_h = post.cover_image) != null ? _h : post.thumbnail_image) != null ? _j : Array.isArray(post.publishedBylines) && ((_i = post.publishedBylines[0]) == null ? void 0 : _i.photo_url)) != null ? _k : "";
-      return {
-        doc,
-        pageData: {
-          title: (_l = post.title) != null ? _l : url,
-          url,
-          description: (_m = post.subtitle) != null ? _m : "",
-          author,
-          site: u.hostname,
-          published,
-          image,
-          content,
-          contentHtml: bodyHtml,
-          fullHtml: "",
-          reason: "",
-          category: ""
-        }
-      };
+        headers: { "User-Agent": "Mozilla/5.0" }
+      });
+      const html = resp.text;
+      return { doc: new DOMParser().parseFromString(html, "text/html"), html };
     } catch (e) {
       return null;
     }
   }
-  async fetchSmart(url) {
-    var _a;
-    if (isRedditUrl(url)) {
-      const result = await this.fetchReddit(url);
-      if (result)
-        return result;
-    }
-    if (isSubstackUrl(url)) {
-      const result = await this.fetchSubstack(url);
-      if (result)
-        return result;
-    }
-    const fetched = await this.fetchPage(url);
-    const doc = (_a = fetched == null ? void 0 : fetched.doc) != null ? _a : new DOMParser().parseFromString("", "text/html");
-    const pageData = fetched ? this.extractPageData(doc, url, fetched.html) : this.blockedPageData(url);
-    return { pageData, doc };
+  // ── Error helpers ────────────────────────────────────────────────────────
+  // Written into the note body when an unexpected mid-clip error occurs.
+  errorContent(url, context, err) {
+    var _a, _b, _c;
+    const e = err;
+    const hostname = (() => {
+      try {
+        return new URL(url).hostname;
+      } catch (e2) {
+        return url;
+      }
+    })();
+    return [
+      `> [!warning] Clipping Failed`,
+      `> An unexpected error occurred. The URL has been preserved.`,
+      ``,
+      `**URL:** ${url}`,
+      `**Site:** ${hostname}`,
+      `**Failed at:** ${context}`,
+      `**Time:** ${(/* @__PURE__ */ new Date()).toISOString()}`,
+      ``,
+      `## Debug Info`,
+      `\`\`\``,
+      `Message : ${(_a = e == null ? void 0 : e.message) != null ? _a : String(err)}`,
+      `Name    : ${(_b = e == null ? void 0 : e.name) != null ? _b : "Unknown"}`,
+      `Stack   : ${(_c = e == null ? void 0 : e.stack) != null ? _c : "unavailable"}`,
+      `\`\`\``
+    ].join("\n");
   }
+  // Minimal PageData for sites that block fetching.
+  // Lets the template engine still produce proper frontmatter with the URL intact.
   blockedPageData(url) {
+    const hostname = (() => {
+      try {
+        return new URL(url).hostname;
+      } catch (e) {
+        return url;
+      }
+    })();
     return {
-      title: url,
+      title: hostname,
       url,
       description: "",
       author: "",
-      site: new URL(url).hostname,
+      site: hostname,
       published: "",
       image: "",
-      content: "",
+      content: [
+        `> [!warning] Fetch Blocked`,
+        `> This site blocked automated fetching. The URL has been saved.`,
+        ``,
+        `**URL:** ${url}`,
+        `**Site:** ${hostname}`,
+        `**Time:** ${(/* @__PURE__ */ new Date()).toISOString()}`
+      ].join("\n"),
       contentHtml: "",
       fullHtml: "",
       reason: "",
       category: ""
     };
   }
+  // ── Data extraction ──────────────────────────────────────────────────────
   extractPageData(doc, url, html) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i;
     const og = (p) => {
@@ -1301,101 +1192,164 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
     const site = og("og:site_name") || new URL(url).hostname;
     const image = og("og:image");
     let author = (_e = (_d = (_c = doc.querySelector('[rel="author"], .author, [itemprop="author"]')) == null ? void 0 : _c.textContent) == null ? void 0 : _d.trim()) != null ? _e : "";
-    if (!author)
-      author = mt("author");
+    if (!author) author = mt("author");
     let published = og("article:published_time") || mt("article:published_time");
     if (!published)
       published = (_g = (_f = doc.querySelector("time[datetime]")) == null ? void 0 : _f.getAttribute("datetime")) != null ? _g : "";
     const clone = new DOMParser().parseFromString(html, "text/html");
-    ["script", "style", "nav", "footer", "header", "aside", "iframe", "noscript"].forEach((s) => clone.querySelectorAll(s).forEach((e) => e.remove()));
+    [
+      "script",
+      "style",
+      "nav",
+      "footer",
+      "header",
+      "aside",
+      "iframe",
+      "noscript"
+    ].forEach((s) => clone.querySelectorAll(s).forEach((e) => e.remove()));
     const main = clone.querySelector("article") || clone.querySelector("main") || clone.querySelector("[role='main']") || clone.querySelector(".post-content, .article-body, .entry-content") || clone.body;
     const contentHtml = (_i = (_h = main == null ? void 0 : main.innerHTML) == null ? void 0 : _h.trim()) != null ? _i : "";
-    const tempData = { title, url, description, author, site, published, image, content: "", contentHtml, fullHtml: html, reason: "", category: "" };
-    const tempEngine = new WCEngine(doc, tempData);
-    const content = tempEngine.toMarkdown(contentHtml);
-    return { title: title.trim(), url, description: description.trim(), author: author.trim(), site, published, image, content, contentHtml, fullHtml: html, reason: "", category: "" };
+    const tempData = {
+      title,
+      url,
+      description,
+      author,
+      site,
+      published,
+      image,
+      content: "",
+      contentHtml,
+      fullHtml: html,
+      reason: "",
+      category: ""
+    };
+    const content = new WCEngine(doc, tempData).toMarkdown(contentHtml);
+    return {
+      title: title.trim(),
+      url,
+      description: description.trim(),
+      author: author.trim(),
+      site,
+      published,
+      image,
+      content,
+      contentHtml,
+      fullHtml: html,
+      reason: "",
+      category: ""
+    };
   }
   // ── Clip orchestration ───────────────────────────────────────────────────
-  // Called for notes that already exist (share to existing note, or cold-start).
+  // Only called for brand new notes from the share sheet.
   // The file stays exactly where Obsidian put it — we only rewrite the content.
-  async checkAndClip(file, force = false) {
-    var _a, _b, _c, _d;
-    if (this.processing.has(file.path))
-      return;
+  async checkAndClip(file) {
+    var _a, _b, _c, _d, _e;
+    if (this.processing.has(file.path)) return;
     const content = await this.app.vault.read(file);
-    if (!isRawUrlNote(content) && !force)
-      return;
+    if (!isRawUrlNote(content)) return;
     const urlMatch = content.trim().match(/https?:\/\/[^\s]+/);
-    if (!urlMatch)
-      return;
+    if (!urlMatch) return;
+    const url = urlMatch[0];
     this.processing.add(file.path);
     new import_obsidian.Notice("\u{1F4CE} Share Clipper: fetching\u2026");
     try {
-      const { pageData, doc } = await this.fetchSmart(urlMatch[0]);
+      const fetched = await this.fetchPage(url);
+      const doc = (_a = fetched == null ? void 0 : fetched.doc) != null ? _a : new DOMParser().parseFromString("", "text/html");
+      const pageData = fetched ? this.extractPageData(doc, url, fetched.html) : this.blockedPageData(url);
       const templates = await this.loadTemplates();
-      if (!templates.length) {
-        new import_obsidian.Notice("No templates found \u2014 open the template builder first");
-        return;
-      }
-      const auto = templates.find((t) => templateMatchesUrl(t.tpl, urlMatch[0]));
-      const defName = (_c = (_b = auto == null ? void 0 : auto.name) != null ? _b : (_a = templates.find((t) => t.name === this.settings.defaultTemplate)) == null ? void 0 : _a.name) != null ? _c : templates[0].name;
+      const auto = templates.find((t) => templateMatchesUrl(t.tpl, url));
+      const defName = (_d = (_c = auto == null ? void 0 : auto.name) != null ? _c : (_b = templates.find((t) => t.name === this.settings.defaultTemplate)) == null ? void 0 : _b.name) != null ? _d : templates[0].name;
+      const resolvedNames = resolveTemplateNames(templates, doc, pageData);
       const details = await new Promise(
-        (res) => new SaveDialog(this.app, templates, defName, this.existingCategories(), res).open()
+        (res) => new SaveDialog(
+          this.app,
+          templates,
+          defName,
+          this.existingCategories(),
+          resolvedNames,
+          res
+        ).open()
       );
       if (!details) {
         new import_obsidian.Notice("Cancelled");
         return;
       }
-      const chosen = (_d = templates.find((t) => t.name === details.templateName)) != null ? _d : templates[0];
-      const finalData = { ...pageData, reason: details.reason, category: details.category };
-      const engine = new WCEngine(doc, finalData);
+      const chosen = (_e = templates.find((t) => t.name === details.templateName)) != null ? _e : templates[0];
+      const engine = new WCEngine(doc, {
+        ...pageData,
+        reason: details.reason,
+        category: details.category
+      });
       const noteContent = buildNote(chosen.tpl, engine);
       await this.app.vault.modify(file, noteContent);
-      new import_obsidian.Notice(`\u2705 Clipped: ${file.basename}`);
+      const targetFolder = details.path;
+      const targetName = details.noteName.replace(/[\\/:*?"<>|]/g, "").substring(0, 80).trim() || file.basename;
+      const targetPath = targetFolder ? `${targetFolder}/${targetName}.md` : `${targetName}.md`;
+      if (targetPath !== file.path) {
+        if (targetFolder) await this.ensureFolder(targetFolder);
+        await this.app.vault.rename(file, targetPath);
+      }
+      new import_obsidian.Notice(`\u2705 Clipped: ${targetName}`);
     } catch (err) {
       console.error("Share Clipper:", err);
-      new import_obsidian.Notice(`\u274C ${err.message}`);
+      await this.app.vault.modify(file, this.errorContent(url, "checkAndClip", err)).catch(() => {
+      });
     } finally {
       this.processing.delete(file.path);
     }
   }
   // Called from URI handler or clipboard command — creates a brand new note.
   async clipUrl(url) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     new import_obsidian.Notice("\u{1F4CE} Share Clipper: fetching\u2026");
     try {
-      const { pageData, doc } = await this.fetchSmart(url);
+      const fetched = await this.fetchPage(url);
+      const doc = (_a = fetched == null ? void 0 : fetched.doc) != null ? _a : new DOMParser().parseFromString("", "text/html");
+      const pageData = fetched ? this.extractPageData(doc, url, fetched.html) : this.blockedPageData(url);
       const templates = await this.loadTemplates();
-      if (!templates.length) {
-        new import_obsidian.Notice("No templates found");
-        return;
-      }
       const auto = templates.find((t) => templateMatchesUrl(t.tpl, url));
-      const defName = (_c = (_b = auto == null ? void 0 : auto.name) != null ? _b : (_a = templates.find((t) => t.name === this.settings.defaultTemplate)) == null ? void 0 : _a.name) != null ? _c : templates[0].name;
+      const defName = (_d = (_c = auto == null ? void 0 : auto.name) != null ? _c : (_b = templates.find((t) => t.name === this.settings.defaultTemplate)) == null ? void 0 : _b.name) != null ? _d : templates[0].name;
+      const resolvedNames = resolveTemplateNames(templates, doc, pageData);
       const details = await new Promise(
-        (res) => new SaveDialog(this.app, templates, defName, this.existingCategories(), res).open()
+        (res) => new SaveDialog(
+          this.app,
+          templates,
+          defName,
+          this.existingCategories(),
+          resolvedNames,
+          res
+        ).open()
       );
       if (!details) {
         new import_obsidian.Notice("Cancelled");
         return;
       }
-      const chosen = (_d = templates.find((t) => t.name === details.templateName)) != null ? _d : templates[0];
-      const engine = new WCEngine(doc, { ...pageData, reason: details.reason, category: details.category });
+      const chosen = (_e = templates.find((t) => t.name === details.templateName)) != null ? _e : templates[0];
+      const engine = new WCEngine(doc, {
+        ...pageData,
+        reason: details.reason,
+        category: details.category
+      });
       const noteContent = buildNote(chosen.tpl, engine);
-      const folder = chosen.tpl.path || "";
-      if (folder)
-        await this.ensureFolder(folder);
-      const safeName = pageData.title.replace(/[\\/:*?"<>|]/g, "").substring(0, 80).trim() || "Clipping";
-      const path = folder ? `${folder}/${safeName}.md` : `${safeName}.md`;
+      const targetFolder = details.path;
+      const targetName = details.noteName.replace(/[\\/:*?"<>|]/g, "").substring(0, 80).trim() || "Clipping";
+      const path = targetFolder ? `${targetFolder}/${targetName}.md` : `${targetName}.md`;
+      if (targetFolder) await this.ensureFolder(targetFolder);
       const existing = this.app.vault.getAbstractFileByPath(path);
       if (existing instanceof import_obsidian.TFile)
         await this.app.vault.modify(existing, noteContent);
-      else
-        await this.app.vault.create(path, noteContent);
-      new import_obsidian.Notice(`\u2705 Clipped: ${safeName}`);
+      else await this.app.vault.create(path, noteContent);
+      new import_obsidian.Notice(`\u2705 Clipped: ${targetName}`);
     } catch (err) {
       console.error("Share Clipper:", err);
-      new import_obsidian.Notice(`\u274C ${err.message}`);
+      try {
+        const safeName = `Clipping Error ${(/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-")}`;
+        await this.app.vault.create(
+          `${safeName}.md`,
+          this.errorContent(url, "clipUrl", err)
+        );
+      } catch (e) {
+      }
     }
   }
   existingCategories() {
@@ -1403,8 +1357,7 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
     this.app.vault.getMarkdownFiles().forEach((f) => {
       var _a, _b;
       const cat = (_b = (_a = this.app.metadataCache.getFileCache(f)) == null ? void 0 : _a.frontmatter) == null ? void 0 : _b.category;
-      if (cat && typeof cat === "string")
-        cats.add(cat.trim());
+      if (cat && typeof cat === "string") cats.add(cat.trim());
     });
     return Array.from(cats).sort();
   }
@@ -1425,34 +1378,52 @@ var ShareClipperSettingTab = class extends import_obsidian.PluginSettingTab {
     el.empty();
     el.createEl("h2", { text: "Share Clipper" });
     el.createEl("h3", { text: "Templates" });
-    new import_obsidian.Setting(el).setName("Templates folder").setDesc("Vault folder containing your Web Clipper template notes. Each note's content is the template JSON.").addText((t) => t.setPlaceholder("Templates/Web Clipper").setValue(this.plugin.settings.templateFolder).onChange(async (v) => {
-      this.plugin.settings.templateFolder = v;
-      await this.plugin.saveSettings();
-    }));
-    new import_obsidian.Setting(el).setName("Default template").setDesc("Template to pre-select when no URL trigger matches. Use the `name` field from the JSON.").addText((t) => t.setPlaceholder("Default").setValue(this.plugin.settings.defaultTemplate).onChange(async (v) => {
-      this.plugin.settings.defaultTemplate = v;
-      await this.plugin.saveSettings();
-    }));
-    new import_obsidian.Setting(el).setName("Template builder").setDesc("Create and edit templates using the official Web Clipper JSON schema.").addButton((b) => b.setButtonText("Open template builder").onClick(() => new TemplateBuilderModal(this.app, this.plugin).open()));
-    el.createEl("h3", { text: "Advanced" });
-    new import_obsidian.Setting(el).setName("Detection delay (ms)").setDesc("How long to wait after a note is created before checking for a shared URL. Default: 1500.").addText((t) => t.setValue(String(this.plugin.settings.watchDelay)).onChange(async (v) => {
-      const n = parseInt(v);
-      if (!isNaN(n)) {
-        this.plugin.settings.watchDelay = n;
+    new import_obsidian.Setting(el).setName("Templates folder").setDesc(
+      "Vault folder containing your Web Clipper template notes. Each note's content is the template JSON."
+    ).addText(
+      (t) => t.setPlaceholder("templates/web-clipper").setValue(this.plugin.settings.templateFolder).onChange(async (v) => {
+        this.plugin.settings.templateFolder = v;
         await this.plugin.saveSettings();
-      }
-    }));
+      })
+    );
+    new import_obsidian.Setting(el).setName("Default template").setDesc(
+      "Template to pre-select when no URL trigger matches. Use the `name` field from the JSON."
+    ).addText(
+      (t) => t.setPlaceholder("Default").setValue(this.plugin.settings.defaultTemplate).onChange(async (v) => {
+        this.plugin.settings.defaultTemplate = v;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(el).setName("Template builder").setDesc(
+      "Create and edit templates using the official Web Clipper JSON schema."
+    ).addButton(
+      (b) => b.setButtonText("Open template builder").onClick(
+        () => new TemplateBuilderModal(this.app, this.plugin).open()
+      )
+    );
+    el.createEl("h3", { text: "Advanced" });
+    new import_obsidian.Setting(el).setName("Detection delay (ms)").setDesc(
+      "How long to wait after a note is created before checking for a shared URL. Default: 1500."
+    ).addText(
+      (t) => t.setValue(String(this.plugin.settings.watchDelay)).onChange(async (v) => {
+        const n = parseInt(v);
+        if (!isNaN(n)) {
+          this.plugin.settings.watchDelay = n;
+          await this.plugin.saveSettings();
+        }
+      })
+    );
     el.createEl("h3", { text: "How it works" });
     el.createEl("p", {
-      text: "Share any page from your browser to Obsidian. Obsidian will ask for a filename, then create the note. This plugin detects the new note, fetches the page, shows a quick dialog for template/reason/category, and rewrites the note in place using your chosen template. The file stays wherever Obsidian put it.",
+      text: "Share any page from your browser to Obsidian. The plugin detects the new note, fetches the page, shows a quick dialog for template/reason/category, and rewrites the note using your chosen template. The file stays wherever Obsidian put it.",
       cls: "setting-item-description"
     });
     el.createEl("p", {
-      text: "Templates are standard Obsidian Web Clipper JSON \u2014 any template from the community repo works without modification. Paste the JSON into a note in your templates folder.",
+      text: "Templates are standard Obsidian Web Clipper JSON \u2014 community templates work without modification. Paste the JSON into a note in your templates folder.",
       cls: "setting-item-description"
     });
     el.createEl("p", {
-      text: "Not available (browser-only): {{highlights}}, {{selection}}, {{prompt:}} (AI).",
+      text: "If a site blocks fetching, the note will contain a warning callout with the URL preserved. Not available (browser-only): {{highlights}}, {{selection}}, {{prompt:}} (AI).",
       cls: "setting-item-description"
     });
   }

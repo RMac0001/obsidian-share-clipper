@@ -61,9 +61,12 @@ var WCEngine = class {
       var _a;
       try {
         const p = JSON.parse((_a = el.textContent) != null ? _a : "");
-        if ((p == null ? void 0 : p["@graph"]) && Array.isArray(p["@graph"])) out.push(...p["@graph"]);
-        else if (Array.isArray(p)) out.push(...p);
-        else out.push(p);
+        if ((p == null ? void 0 : p["@graph"]) && Array.isArray(p["@graph"]))
+          out.push(...p["@graph"]);
+        else if (Array.isArray(p))
+          out.push(...p);
+        else
+          out.push(p);
       } catch (e) {
       }
     });
@@ -82,14 +85,19 @@ var WCEngine = class {
   resolveExpr(expr) {
     const parts = this.splitPipe(expr);
     let val = this.resolveVar(parts[0].trim());
-    for (const f of parts.slice(1)) val = this.applyFilter(val, f.trim());
+    for (const f of parts.slice(1))
+      val = this.applyFilter(val, f.trim());
     return val;
   }
   resolveVar(name) {
-    if (name.startsWith("selector:")) return this.doSelector(name.slice(9), false);
-    if (name.startsWith("selectorHtml:")) return this.doSelector(name.slice(13), true);
-    if (name.startsWith("schema:")) return this.doSchema(name.slice(7));
-    if (name.startsWith("meta:")) return this.doMeta(name.slice(5));
+    if (name.startsWith("selector:"))
+      return this.doSelector(name.slice(9), false);
+    if (name.startsWith("selectorHtml:"))
+      return this.doSelector(name.slice(13), true);
+    if (name.startsWith("schema:"))
+      return this.doSchema(name.slice(7));
+    if (name.startsWith("meta:"))
+      return this.doMeta(name.slice(5));
     switch (name) {
       case "title":
         return this.data.title;
@@ -113,9 +121,9 @@ var WCEngine = class {
       case "fullHtml":
         return this.data.fullHtml;
       case "date":
-        return (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+        return new Date().toISOString().split("T")[0];
       case "time":
-        return (/* @__PURE__ */ new Date()).toISOString();
+        return new Date().toISOString();
       case "highlights":
       case "selection":
       case "selectionHtml":
@@ -138,8 +146,10 @@ var WCEngine = class {
     const els = Array.from(this.doc.querySelectorAll(css));
     return els.map((el) => {
       var _a, _b, _c;
-      if (attr) return (_a = el.getAttribute(attr)) != null ? _a : "";
-      if (asHtml) return el.innerHTML.trim();
+      if (attr)
+        return (_a = el.getAttribute(attr)) != null ? _a : "";
+      if (asHtml)
+        return el.innerHTML.trim();
       return (_c = (_b = el.textContent) == null ? void 0 : _b.trim()) != null ? _c : "";
     });
   }
@@ -161,32 +171,39 @@ var WCEngine = class {
     }) : this.jsonLd;
     for (const s of schemas) {
       const v = this.deepGet(s, keyPath);
-      if (v != null) return Array.isArray(v) ? v.map((x) => this.schemaStr(x)) : this.schemaStr(v);
+      if (v != null)
+        return Array.isArray(v) ? v.map((x) => this.schemaStr(x)) : this.schemaStr(v);
     }
     return "";
   }
   deepGet(obj, path) {
-    if (!path) return obj;
+    if (!path)
+      return obj;
     let cur = obj;
     for (const part of path.split(".")) {
       const m = part.match(/^(.+?)\[(\d+|\*)\]$/);
       if (m) {
         cur = cur == null ? void 0 : cur[m[1]];
-        if (!Array.isArray(cur)) return void 0;
+        if (!Array.isArray(cur))
+          return void 0;
         cur = m[2] === "*" ? cur : cur[parseInt(m[2])];
       } else {
         cur = cur == null ? void 0 : cur[part];
       }
-      if (cur == null) return void 0;
+      if (cur == null)
+        return void 0;
     }
     return cur;
   }
   schemaStr(v) {
-    if (typeof v === "string" || typeof v === "number") return String(v);
+    if (typeof v === "string" || typeof v === "number")
+      return String(v);
     if (typeof v === "object" && v !== null) {
       const o = v;
-      if (o.name) return String(o.name);
-      if (o["@value"]) return String(o["@value"]);
+      if (o.name)
+        return String(o.name);
+      if (o["@value"])
+        return String(o["@value"]);
     }
     return JSON.stringify(v);
   }
@@ -290,8 +307,9 @@ var WCEngine = class {
   }
   formatDate(val, arg) {
     const fmt = this.strArg(arg) || "YYYY-MM-DD";
-    const d = val ? new Date(val) : /* @__PURE__ */ new Date();
-    if (isNaN(d.getTime())) return val;
+    const d = val ? new Date(val) : new Date();
+    if (isNaN(d.getTime()))
+      return val;
     return fmt.replace("YYYY", String(d.getFullYear())).replace("MM", String(d.getMonth() + 1).padStart(2, "0")).replace("DD", String(d.getDate()).padStart(2, "0")).replace("HH", String(d.getHours()).padStart(2, "0")).replace("mm", String(d.getMinutes()).padStart(2, "0")).replace("ss", String(d.getSeconds()).padStart(2, "0"));
   }
   sliceStr(val, arg) {
@@ -306,7 +324,8 @@ var WCEngine = class {
     arg = arg.trim();
     if (arg.startsWith("(")) {
       const inner = arg.slice(1, arg.lastIndexOf(")"));
-      for (const [from, to] of this.parsePairs(inner)) val = this.replaceOne(val, from, to);
+      for (const [from, to] of this.parsePairs(inner))
+        val = this.replaceOne(val, from, to);
       return val;
     }
     const parts = this.parseQuotedPair(arg);
@@ -327,7 +346,8 @@ var WCEngine = class {
     const pairs = [];
     const re = /"((?:[^"\\]|\\.)*)"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
     let m;
-    while ((m = re.exec(inner)) !== null) pairs.push([this.unescape(m[1]), this.unescape(m[2])]);
+    while ((m = re.exec(inner)) !== null)
+      pairs.push([this.unescape(m[1]), this.unescape(m[2])]);
     return pairs;
   }
   parseQuotedPair(arg) {
@@ -343,7 +363,8 @@ var WCEngine = class {
         }
         i++;
         result.push(s);
-        while (i < arg.length && (arg[i] === ":" || arg[i] === " ")) i++;
+        while (i < arg.length && (arg[i] === ":" || arg[i] === " "))
+          i++;
       } else {
         i++;
       }
@@ -375,11 +396,14 @@ ${val.split("\n").map((l) => "> " + l).join("\n")}`;
   }
   walkNode(node) {
     var _a, _b;
-    if (node.nodeType === Node.TEXT_NODE) return ((_a = node.textContent) == null ? void 0 : _a.replace(/\s+/g, " ")) || "";
-    if (node.nodeType !== Node.ELEMENT_NODE) return "";
+    if (node.nodeType === Node.TEXT_NODE)
+      return ((_a = node.textContent) == null ? void 0 : _a.replace(/\s+/g, " ")) || "";
+    if (node.nodeType !== Node.ELEMENT_NODE)
+      return "";
     const el = node;
     const tag = el.tagName.toLowerCase();
-    if (["script", "style", "svg", "noscript"].includes(tag)) return "";
+    if (["script", "style", "svg", "noscript"].includes(tag))
+      return "";
     const kids = Array.from(node.childNodes).map((c) => this.walkNode(c)).join("");
     switch (tag) {
       case "h1":
@@ -475,7 +499,8 @@ ${kids}
       const ch = expr[i];
       if (inStr) {
         cur += ch;
-        if (ch === sc && expr[i - 1] !== "\\") inStr = false;
+        if (ch === sc && expr[i - 1] !== "\\")
+          inStr = false;
       } else if (ch === '"' || ch === "'") {
         inStr = true;
         sc = ch;
@@ -493,7 +518,8 @@ ${kids}
         cur += ch;
       }
     }
-    if (cur) parts.push(cur);
+    if (cur)
+      parts.push(cur);
     return parts;
   }
 };
@@ -509,14 +535,18 @@ function buildFrontmatter(properties, engine) {
 function yamlLine(name, value, type) {
   if (type === "multitext" || type === "tags") {
     const arr = (Array.isArray(value) ? value : [value]).filter(Boolean);
-    if (arr.length === 0) return `${name}:`;
+    if (arr.length === 0)
+      return `${name}:`;
     return `${name}:
 ` + arr.map((v) => `  - ${yamlScalar(v)}`).join("\n");
   }
-  if (type === "checkbox") return `${name}: ${value === "true" || value === "1"}`;
-  if (type === "number") return `${name}: ${parseFloat(String(value)) || 0}`;
+  if (type === "checkbox")
+    return `${name}: ${value === "true" || value === "1"}`;
+  if (type === "number")
+    return `${name}: ${parseFloat(String(value)) || 0}`;
   const str = Array.isArray(value) ? value.join(", ") : String(value);
-  if (!str) return `${name}:`;
+  if (!str)
+    return `${name}:`;
   return `${name}: ${yamlScalar(str)}`;
 }
 function yamlScalar(v) {
@@ -527,7 +557,8 @@ function yamlScalar(v) {
 function parseTemplateNote(content) {
   let json = content.trim();
   const fence = json.match(/^```(?:json)?\s*\n([\s\S]+?)\n```\s*$/);
-  if (fence) json = fence[1].trim();
+  if (fence)
+    json = fence[1].trim();
   try {
     return JSON.parse(json);
   } catch (e) {
@@ -537,15 +568,18 @@ function parseTemplateNote(content) {
 function templateMatchesUrl(tpl, url) {
   var _a;
   for (const trigger of (_a = tpl.triggers) != null ? _a : []) {
-    if (!trigger || trigger.startsWith("schema:")) continue;
+    if (!trigger || trigger.startsWith("schema:"))
+      continue;
     if (trigger.startsWith("/") && trigger.lastIndexOf("/") > 0) {
       const last = trigger.lastIndexOf("/");
       try {
-        if (new RegExp(trigger.slice(1, last), trigger.slice(last + 1)).test(url)) return true;
+        if (new RegExp(trigger.slice(1, last), trigger.slice(last + 1)).test(url))
+          return true;
       } catch (e) {
       }
     } else {
-      if (url.startsWith(trigger) || url.includes(trigger)) return true;
+      if (url.startsWith(trigger) || url.includes(trigger))
+        return true;
     }
   }
   return false;
@@ -564,7 +598,8 @@ function buildNote(tpl, engine) {
 ${bodyResolved}`;
 }
 function injectStyles() {
-  if (document.getElementById("share-clipper-styles")) return;
+  if (document.getElementById("share-clipper-styles"))
+    return;
   const s = document.createElement("style");
   s.id = "share-clipper-styles";
   s.textContent = `
@@ -683,7 +718,8 @@ var SaveDialog = class extends import_obsidian.Modal {
       for (const t of this.templates) {
         const opt = sel.createEl("option", { text: t.name });
         opt.value = t.name;
-        if (t.name === this.selName) opt.selected = true;
+        if (t.name === this.selName)
+          opt.selected = true;
       }
       sel.addEventListener("change", () => {
         this.selName = sel.value;
@@ -737,7 +773,8 @@ var SaveDialog = class extends import_obsidian.Modal {
     });
     btnRow.createEl("button", { text: "Save", cls: "sc-btn-accent" }).addEventListener("click", () => this.submit());
     newCat.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") this.submit();
+      if (e.key === "Enter")
+        this.submit();
     });
     setTimeout(() => reasonInput.focus(), 50);
   }
@@ -858,14 +895,17 @@ var TemplateBuilderModal = class extends import_obsidian.Modal {
     await this.loadNotes();
     this.renderSidebar();
     const first = Array.from(this.notes.keys())[0];
-    if (first) this.selectNote(first);
-    else this.editorEl.style.opacity = "0.5";
+    if (first)
+      this.selectNote(first);
+    else
+      this.editorEl.style.opacity = "0.5";
   }
   async loadNotes() {
     this.notes.clear();
     await this.plugin.ensureFolder(this.plugin.settings.templateFolder);
     const folder = this.app.vault.getAbstractFileByPath(this.plugin.settings.templateFolder);
-    if (!(folder instanceof import_obsidian.TFolder)) return;
+    if (!(folder instanceof import_obsidian.TFolder))
+      return;
     for (const child of folder.children) {
       if (child instanceof import_obsidian.TFile && child.extension === "md")
         this.notes.set(child.basename, await this.app.vault.read(child));
@@ -890,7 +930,8 @@ var TemplateBuilderModal = class extends import_obsidian.Modal {
         await this.deleteTemplate();
       });
       item.addEventListener("click", () => {
-        if (this.isDirty && this.selected !== name && !confirm(`Discard unsaved changes to "${this.selected}"?`)) return;
+        if (this.isDirty && this.selected !== name && !confirm(`Discard unsaved changes to "${this.selected}"?`))
+          return;
         this.selectNote(name);
       });
     }
@@ -926,7 +967,8 @@ var TemplateBuilderModal = class extends import_obsidian.Modal {
     let saveName = this.selected;
     try {
       const p = JSON.parse(json);
-      if (p.name) saveName = p.name;
+      if (p.name)
+        saveName = p.name;
     } catch (e) {
     }
     const folder = this.plugin.settings.templateFolder;
@@ -934,12 +976,15 @@ var TemplateBuilderModal = class extends import_obsidian.Modal {
     const newPath = `${folder}/${saveName}.md`;
     if (this.selected !== saveName) {
       const old = this.app.vault.getAbstractFileByPath(oldPath);
-      if (old instanceof import_obsidian.TFile) await this.app.vault.delete(old);
+      if (old instanceof import_obsidian.TFile)
+        await this.app.vault.delete(old);
       this.notes.delete(this.selected);
     }
     const existing = this.app.vault.getAbstractFileByPath(newPath);
-    if (existing instanceof import_obsidian.TFile) await this.app.vault.modify(existing, json);
-    else await this.app.vault.create(newPath, json);
+    if (existing instanceof import_obsidian.TFile)
+      await this.app.vault.modify(existing, json);
+    else
+      await this.app.vault.create(newPath, json);
     this.notes.set(saveName, json);
     this.selected = saveName;
     this.isDirty = false;
@@ -950,14 +995,17 @@ var TemplateBuilderModal = class extends import_obsidian.Modal {
     this.renderSidebar();
   }
   async deleteTemplate() {
-    if (!this.selected || !confirm(`Delete template "${this.selected}"?`)) return;
+    if (!this.selected || !confirm(`Delete template "${this.selected}"?`))
+      return;
     const path = `${this.plugin.settings.templateFolder}/${this.selected}.md`;
     const file = this.app.vault.getAbstractFileByPath(path);
-    if (file instanceof import_obsidian.TFile) await this.app.vault.delete(file);
+    if (file instanceof import_obsidian.TFile)
+      await this.app.vault.delete(file);
     this.notes.delete(this.selected);
     this.selected = "";
     const remaining = Array.from(this.notes.keys());
-    if (remaining.length) this.selectNote(remaining[0]);
+    if (remaining.length)
+      this.selectNote(remaining[0]);
     else {
       this.jsonEl.value = "";
       this.editorEl.style.opacity = "0.5";
@@ -969,6 +1017,12 @@ var TemplateBuilderModal = class extends import_obsidian.Modal {
     this.contentEl.empty();
   }
 };
+function isRedditUrl(url) {
+  return /^https?:\/\/(www\.|old\.)?reddit\.com\/r\//.test(url);
+}
+function isSubstackUrl(url) {
+  return /^https?:\/\/[^/]+\.substack\.com\/p\//.test(url);
+}
 var URL_PATTERN = /^https?:\/\/[^\s]+$/m;
 function isRawUrlNote(content) {
   const t = content.trim();
@@ -993,7 +1047,8 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
     });
     this.registerEvent(
       this.app.vault.on("create", async (file) => {
-        if (!(file instanceof import_obsidian.TFile) || file.extension !== "md") return;
+        if (!(file instanceof import_obsidian.TFile) || file.extension !== "md")
+          return;
         setTimeout(() => this.checkAndClip(file), this.settings.watchDelay);
       })
     );
@@ -1022,7 +1077,8 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
       name: "Clip URL from active note",
       callback: async () => {
         const f = this.app.workspace.getActiveFile();
-        if (f) await this.checkAndClip(f, true);
+        if (f)
+          await this.checkAndClip(f, true);
       }
     });
     this.addCommand({
@@ -1040,7 +1096,8 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
       await this.app.vault.create(path, DEFAULT_TEMPLATE_JSON);
   }
   async ensureFolder(path) {
-    if (!path) return;
+    if (!path)
+      return;
     let cur = "";
     for (const part of path.split("/")) {
       cur = cur ? `${cur}/${part}` : part;
@@ -1050,21 +1107,184 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
   }
   async loadTemplates() {
     const folder = this.app.vault.getAbstractFileByPath(this.settings.templateFolder);
-    if (!(folder instanceof import_obsidian.TFolder)) return [];
+    if (!(folder instanceof import_obsidian.TFolder))
+      return [];
     const result = [];
     for (const child of folder.children) {
-      if (!(child instanceof import_obsidian.TFile) || child.extension !== "md") continue;
+      if (!(child instanceof import_obsidian.TFile) || child.extension !== "md")
+        continue;
       const content = await this.app.vault.read(child);
       const tpl = parseTemplateNote(content);
-      if (tpl) result.push({ name: tpl.name || child.basename, tpl });
+      if (tpl)
+        result.push({ name: tpl.name || child.basename, tpl });
     }
     return result.sort((a, b) => a.name.localeCompare(b.name));
   }
   // ── Page fetching & data extraction ─────────────────────────────────────
   async fetchPage(url) {
-    const resp = await (0, import_obsidian.requestUrl)({ url, headers: { "User-Agent": "Mozilla/5.0" } });
+    const resp = await (0, import_obsidian.requestUrl)({
+      url,
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9"
+      }
+    });
     const html = resp.text;
     return { doc: new DOMParser().parseFromString(html, "text/html"), html };
+  }
+  async fetchReddit(url) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
+    try {
+      const apiUrl = url.replace(/\/?$/, ".json");
+      const resp = await (0, import_obsidian.requestUrl)({
+        url: apiUrl,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+          "Accept": "application/json"
+        }
+      });
+      const json = resp.json;
+      const post = (_d = (_c = (_b = (_a = json == null ? void 0 : json[0]) == null ? void 0 : _a.data) == null ? void 0 : _b.children) == null ? void 0 : _c[0]) == null ? void 0 : _d.data;
+      if (!post)
+        return null;
+      const published = post.created_utc ? new Date(post.created_utc * 1e3).toISOString() : "";
+      const subreddit = (_e = post.subreddit) != null ? _e : "";
+      const selftext = (_f = post.selftext) != null ? _f : "";
+      const title = (_g = post.title) != null ? _g : url;
+      const author = post.author ? `u/${post.author}` : "";
+      const lines = [];
+      if (selftext.trim()) {
+        lines.push(selftext.trim());
+        lines.push("");
+      }
+      const comments = (_j = (_i = (_h = json == null ? void 0 : json[1]) == null ? void 0 : _h.data) == null ? void 0 : _i.children) != null ? _j : [];
+      const topComments = comments.filter((c) => c.kind === "t1").slice(0, 10);
+      if (topComments.length > 0) {
+        lines.push("## Top Comments");
+        lines.push("");
+        for (const c of topComments) {
+          const d = c.data;
+          const commentAuthor = (d == null ? void 0 : d.author) ? `u/${d.author}` : "unknown";
+          const body = ((_k = d == null ? void 0 : d.body) != null ? _k : "").trim();
+          if (body && body !== "[deleted]" && body !== "[removed]") {
+            lines.push(`**${commentAuthor}:** ${body}`);
+            lines.push("");
+          }
+        }
+      }
+      const content = lines.join("\n");
+      const doc = new DOMParser().parseFromString("", "text/html");
+      return {
+        doc,
+        pageData: {
+          title,
+          url,
+          description: selftext.slice(0, 200).replace(/\n/g, " "),
+          author,
+          site: subreddit ? `r/${subreddit}` : "Reddit",
+          published,
+          image: "",
+          content,
+          contentHtml: "",
+          fullHtml: "",
+          reason: "",
+          category: ""
+        }
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+  async fetchSubstack(url) {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m;
+    try {
+      const u = new URL(url);
+      const slug = u.pathname.replace(/^\/p\//, "").replace(/\/$/, "");
+      const apiUrl = `${u.protocol}//${u.hostname}/api/v1/posts/${slug}`;
+      const resp = await (0, import_obsidian.requestUrl)({
+        url: apiUrl,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+          "Accept": "application/json"
+        }
+      });
+      const post = resp.json;
+      if (!(post == null ? void 0 : post.title))
+        return null;
+      const bodyHtml = (_a = post.body_html) != null ? _a : "";
+      const doc = new DOMParser().parseFromString(bodyHtml || "", "text/html");
+      const content = bodyHtml ? new WCEngine(doc, {
+        title: (_b = post.title) != null ? _b : "",
+        url,
+        description: (_c = post.subtitle) != null ? _c : "",
+        author: "",
+        site: "",
+        published: "",
+        image: "",
+        content: "",
+        contentHtml: bodyHtml,
+        fullHtml: "",
+        reason: "",
+        category: ""
+      }).toMarkdown(bodyHtml) : "";
+      const authors = Array.isArray(post.authors) ? post.authors : [];
+      const author = (_e = (_d = authors[0]) == null ? void 0 : _d.name) != null ? _e : "";
+      const published = (_g = (_f = post.post_date) != null ? _f : post.updated_at) != null ? _g : "";
+      const image = (_k = (_j = (_h = post.cover_image) != null ? _h : post.thumbnail_image) != null ? _j : Array.isArray(post.publishedBylines) && ((_i = post.publishedBylines[0]) == null ? void 0 : _i.photo_url)) != null ? _k : "";
+      return {
+        doc,
+        pageData: {
+          title: (_l = post.title) != null ? _l : url,
+          url,
+          description: (_m = post.subtitle) != null ? _m : "",
+          author,
+          site: u.hostname,
+          published,
+          image,
+          content,
+          contentHtml: bodyHtml,
+          fullHtml: "",
+          reason: "",
+          category: ""
+        }
+      };
+    } catch (e) {
+      return null;
+    }
+  }
+  async fetchSmart(url) {
+    var _a;
+    if (isRedditUrl(url)) {
+      const result = await this.fetchReddit(url);
+      if (result)
+        return result;
+    }
+    if (isSubstackUrl(url)) {
+      const result = await this.fetchSubstack(url);
+      if (result)
+        return result;
+    }
+    const fetched = await this.fetchPage(url);
+    const doc = (_a = fetched == null ? void 0 : fetched.doc) != null ? _a : new DOMParser().parseFromString("", "text/html");
+    const pageData = fetched ? this.extractPageData(doc, url, fetched.html) : this.blockedPageData(url);
+    return { pageData, doc };
+  }
+  blockedPageData(url) {
+    return {
+      title: url,
+      url,
+      description: "",
+      author: "",
+      site: new URL(url).hostname,
+      published: "",
+      image: "",
+      content: "",
+      contentHtml: "",
+      fullHtml: "",
+      reason: "",
+      category: ""
+    };
   }
   extractPageData(doc, url, html) {
     var _a, _b, _c, _d, _e, _f, _g, _h, _i;
@@ -1081,9 +1301,11 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
     const site = og("og:site_name") || new URL(url).hostname;
     const image = og("og:image");
     let author = (_e = (_d = (_c = doc.querySelector('[rel="author"], .author, [itemprop="author"]')) == null ? void 0 : _c.textContent) == null ? void 0 : _d.trim()) != null ? _e : "";
-    if (!author) author = mt("author");
+    if (!author)
+      author = mt("author");
     let published = og("article:published_time") || mt("article:published_time");
-    if (!published) published = (_g = (_f = doc.querySelector("time[datetime]")) == null ? void 0 : _f.getAttribute("datetime")) != null ? _g : "";
+    if (!published)
+      published = (_g = (_f = doc.querySelector("time[datetime]")) == null ? void 0 : _f.getAttribute("datetime")) != null ? _g : "";
     const clone = new DOMParser().parseFromString(html, "text/html");
     ["script", "style", "nav", "footer", "header", "aside", "iframe", "noscript"].forEach((s) => clone.querySelectorAll(s).forEach((e) => e.remove()));
     const main = clone.querySelector("article") || clone.querySelector("main") || clone.querySelector("[role='main']") || clone.querySelector(".post-content, .article-body, .entry-content") || clone.body;
@@ -1098,16 +1320,18 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
   // The file stays exactly where Obsidian put it — we only rewrite the content.
   async checkAndClip(file, force = false) {
     var _a, _b, _c, _d;
-    if (this.processing.has(file.path)) return;
+    if (this.processing.has(file.path))
+      return;
     const content = await this.app.vault.read(file);
-    if (!isRawUrlNote(content) && !force) return;
+    if (!isRawUrlNote(content) && !force)
+      return;
     const urlMatch = content.trim().match(/https?:\/\/[^\s]+/);
-    if (!urlMatch) return;
+    if (!urlMatch)
+      return;
     this.processing.add(file.path);
     new import_obsidian.Notice("\u{1F4CE} Share Clipper: fetching\u2026");
     try {
-      const { doc, html } = await this.fetchPage(urlMatch[0]);
-      const pageData = this.extractPageData(doc, urlMatch[0], html);
+      const { pageData, doc } = await this.fetchSmart(urlMatch[0]);
       const templates = await this.loadTemplates();
       if (!templates.length) {
         new import_obsidian.Notice("No templates found \u2014 open the template builder first");
@@ -1140,8 +1364,7 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
     var _a, _b, _c, _d;
     new import_obsidian.Notice("\u{1F4CE} Share Clipper: fetching\u2026");
     try {
-      const { doc, html } = await this.fetchPage(url);
-      const pageData = this.extractPageData(doc, url, html);
+      const { pageData, doc } = await this.fetchSmart(url);
       const templates = await this.loadTemplates();
       if (!templates.length) {
         new import_obsidian.Notice("No templates found");
@@ -1160,12 +1383,15 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
       const engine = new WCEngine(doc, { ...pageData, reason: details.reason, category: details.category });
       const noteContent = buildNote(chosen.tpl, engine);
       const folder = chosen.tpl.path || "";
-      if (folder) await this.ensureFolder(folder);
+      if (folder)
+        await this.ensureFolder(folder);
       const safeName = pageData.title.replace(/[\\/:*?"<>|]/g, "").substring(0, 80).trim() || "Clipping";
       const path = folder ? `${folder}/${safeName}.md` : `${safeName}.md`;
       const existing = this.app.vault.getAbstractFileByPath(path);
-      if (existing instanceof import_obsidian.TFile) await this.app.vault.modify(existing, noteContent);
-      else await this.app.vault.create(path, noteContent);
+      if (existing instanceof import_obsidian.TFile)
+        await this.app.vault.modify(existing, noteContent);
+      else
+        await this.app.vault.create(path, noteContent);
       new import_obsidian.Notice(`\u2705 Clipped: ${safeName}`);
     } catch (err) {
       console.error("Share Clipper:", err);
@@ -1177,7 +1403,8 @@ var ShareClipperPlugin = class extends import_obsidian.Plugin {
     this.app.vault.getMarkdownFiles().forEach((f) => {
       var _a, _b;
       const cat = (_b = (_a = this.app.metadataCache.getFileCache(f)) == null ? void 0 : _a.frontmatter) == null ? void 0 : _b.category;
-      if (cat && typeof cat === "string") cats.add(cat.trim());
+      if (cat && typeof cat === "string")
+        cats.add(cat.trim());
     });
     return Array.from(cats).sort();
   }

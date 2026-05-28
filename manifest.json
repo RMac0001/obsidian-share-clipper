@@ -1,7 +1,7 @@
 {
   "id": "share-clipper",
   "name": "Share Clipper",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "minAppVersion": "1.4.0",
   "description": "Clips web pages shared from your mobile browser. Uses standard Obsidian Web Clipper JSON templates — community templates work without modification.",
   "author": "Roger",
